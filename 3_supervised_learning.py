@@ -264,10 +264,13 @@ class SupervisedSegmentation:
         joblib.dump(self.best_model, 'models/best_classifier.pkl')
         joblib.dump(self.scaler, 'models/scaler.pkl')
         joblib.dump(self.feature_cols, 'models/feature_names.pkl')
+        reference_date = pd.to_datetime(self.df['Dt_Customer'], dayfirst=True).max()
+        joblib.dump(reference_date, 'models/reference_date.pkl')
         
         print(f"\n✓ Best model saved to 'models/best_classifier.pkl'")
         print(f"✓ Scaler saved to 'models/scaler.pkl'")
         print(f"✓ Feature names saved to 'models/feature_names.pkl'")
+        print(f"✓ Reference date saved to 'models/reference_date.pkl'")
     
     def predict_new_customer(self, customer_data):
         """Predict segment for new customer"""

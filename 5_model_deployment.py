@@ -9,22 +9,32 @@ import joblib
 from datetime import datetime
 from typing import Dict, List, Union
 import json
+from pathlib import Path
 
 
 class CustomerSegmentationModel:
     """Production-ready model for real-time customer segmentation"""
     
-    def __init__(self, model_path='best_model.pkl', scaler_path='scaler.pkl'):
-        """Initialize the model and scaler"""
+    def __init__(self, model_path=None, scaler_path=None, feature_names_path=None,
+                 reference_date_path=None):
+        """Load the model and the preprocessing metadata produced by training."""
+        model_dir = Path(__file__).resolve().parent / "models"
+        model_path = Path(model_path) if model_path else model_dir / "best_classifier.pkl"
+        scaler_path = Path(scaler_path) if scaler_path else model_dir / "scaler.pkl"
+        feature_names_path = Path(feature_names_path) if feature_names_path else model_dir / "feature_names.pkl"
+        reference_date_path = Path(reference_date_path) if reference_date_path else model_dir / "reference_date.pkl"
         try:
             self.model = joblib.load(model_path)
             self.scaler = joblib.load(scaler_path)
+            self.feature_cols = joblib.load(feature_names_path)
+            self.reference_date = pd.Timestamp(joblib.load(reference_date_path))
             print(f"✓ Model loaded successfully from {model_path}")
-            print(f"✓ Scaler loaded successfully from {scaler_path}")
         except FileNotFoundError:
-            print("⚠ Model files not found. Please train the model first.")
+            print("⚠ Model artifacts not found. Run the supervised training pipeline first.")
             self.model = None
             self.scaler = None
+            self.feature_cols = None
+            self.reference_date = None
     
     def preprocess_customer_data(self, customer_data: Dict) -> pd.DataFrame:
         """
@@ -77,8 +87,8 @@ class CustomerSegmentationModel:
         # Customer Days
         if 'Dt_Customer' in df.columns:
             df['Dt_Customer'] = pd.to_datetime(df['Dt_Customer'], format='%d-%m-%Y')
-            reference_date = datetime.now()
-            df['Customer_Days'] = (reference_date - df['Dt_Customer']).dt.days
+            customer_date = pd.to_datetime(df['Dt_Customer'], format='%d-%m-%Y')
+            df['Customer_Days'] = (self.reference_date - customer_date).dt.days.clip(lower=0)
         
         # Derived Features
         if 'Total_Spending' in df.columns and 'Total_Purchases' in df.columns:
@@ -134,20 +144,8 @@ class CustomerSegmentationModel:
         df = self.preprocess_customer_data(customer_data)
         
         # Select features for prediction
-        feature_cols = [
-            'Age', 'Income', 'Total_Spending', 'Total_Children',
-            'Family_Size', 'Total_Purchases', 'Customer_Days',
-            'Avg_Purchase_Value', 'Spending_Per_Day', 'Income_Per_Member',
-            'Education_Level', 'Has_Partner', 'Total_Campaigns_Accepted',
-            'Web_Activity_Score', 'Deal_Sensitivity', 'Product_Diversity',
-            'Response_Rate', 'Recency', 'NumWebVisitsMonth',
-            'MntWines', 'MntFruits', 'MntMeatProducts',
-            'MntFishProducts', 'MntSweetProducts', 'MntGoldProds'
-        ]
-        
-        # Filter available features
-        available_features = [f for f in feature_cols if f in df.columns]
-        X = df[available_features].fillna(0)
+        # Use the exact feature ordering captured during model training.
+        X = df[self.feature_cols].fillna(0)
         
         # Scale features
         X_scaled = self.scaler.transform(X)
